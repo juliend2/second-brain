@@ -30,8 +30,8 @@ through the Notion mobile app.
 ## Data model
 
 - Markdown store: git-versioned folder of node markdown files.
-- SQLite: metadata, edges, embeddings (`sqlite-vec`), status.
-- Bleve: full-text search index, rebuilt from the store.
+- SQLite: metadata, edges, embeddings (float32 blob, cosine in memory), status.
+- SQLite FTS5: full-text search index, rebuilt from the store (`RebuildIndex()`).
 
 ## Enrichment (hybrid)
 
@@ -46,12 +46,30 @@ through the Notion mobile app.
     *why* two nodes connect; surfaced in the UI.
 - Auto-applied by default; audit occasionally.
 
+Run with `enrich embed` (local embeddings for every node missing one) and
+`enrich cloud` (one cloud LLM call per draft node; `enrich all` does both).
+Concurrency via `ENRICH_EMBED_WORKERS` / `ENRICH_WORKERS`.
+
 ## Serving
 
 One HTTP API (`/api/nodes`, `/api/search`, `/api/graph`) behind three clients:
 
 - **MCP server** — thin wrapper around the API exposing tools to LLM clients
-  (opencode today, others later).
+  (opencode today, others later). Served over stdio (`cmd/mcp`); register it
+  with opencode running on the same machine:
+  ```json
+  {
+    "mcp": {
+      "brain": {
+        "type": "local",
+        "command": ["/path/to/brain-mcp"],
+        "environment": { "BRAIN_API_URL": "http://127.0.0.1:8080" }
+      }
+    }
+  }
+  ```
+  Tools: `search_corpus`, `get_node`, `related` (embedding neighbors), `find_path`
+  (link-graph shortest path), `create_note` (`[[wikilinks]]` become edges).
 - **Mobile PWA** — served over HTTPS via a Tailscale tailnet certificate
   (`machine.tailnet.ts.net`); mobile-first, installable. Main feature is
   **read-with-related**: show a node's markdown plus links in/out and nearest
@@ -62,7 +80,7 @@ No CLI (dropped — interactions happen via MCP and the PWA).
 ## Hosting
 
 ThinkCentre, ~4GB RAM, on the tailnet. Budget RAM carefully: Ollama +
-nomic-embed-text (~1–2GB) + Go service + bleve + SQLite must all fit.
+nomic-embed-text (~1–2GB) + Go service + SQLite must all fit.
 
 ## API
 
@@ -100,8 +118,7 @@ Search is SQLite FTS5 (kept in sync by the store, rebuilt with
       them
 - [ ] Ingest: handle Notion pages inside child databases (currently only
       child pages are traversed)
-- [ ] Enrich: local embeddings (Ollama + nomic-embed-text)
-- [ ] Enrich: cloud pass (tags / wikilinks / summary / connects-to)
-- [ ] Serve: MCP server (opencode on a tailnet machine → stdio or tailnet HTTP,
-      no Funnel)
+- [x] Enrich: local embeddings (Ollama + nomic-embed-text, `enrich embed`)
+- [x] Enrich: cloud pass (tags / wikilinks / summary / connects-to, `enrich cloud`)
+- [x] Serve: MCP server (opencode on a tailnet machine → stdio, no Funnel)
 - [ ] Serve: mobile PWA (read-with-related)
