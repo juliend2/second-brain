@@ -94,3 +94,24 @@ func (s *Server) handlePath(w http.ResponseWriter, r *http.Request) {
 	}
 	writeJSON(w, http.StatusOK, map[string]any{"path": path})
 }
+
+// handleResolve maps a wikilink title to a node id. Used by the PWA to turn
+// [[wikilinks]] into tappable navigation.
+func (s *Server) handleResolve(w http.ResponseWriter, r *http.Request) {
+	title := r.URL.Query().Get("title")
+	if title == "" {
+		writeErr(w, http.StatusBadRequest, "missing title parameter")
+		return
+	}
+	id, ok := s.store.ResolveTitle(title)
+	if !ok {
+		writeErr(w, http.StatusNotFound, "no node with that title")
+		return
+	}
+	n, err := s.store.GetNode(id)
+	if err != nil {
+		writeErr(w, http.StatusInternalServerError, err.Error())
+		return
+	}
+	writeJSON(w, http.StatusOK, map[string]any{"id": id, "title": n.Title})
+}

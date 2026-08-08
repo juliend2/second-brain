@@ -269,3 +269,62 @@ func jsonBody(t *testing.T, v any) io.Reader {
 	}
 	return bytes.NewReader(b)
 }
+
+func TestResolveTitle(t *testing.T) {
+	ts, s := newTestServer(t)
+	seed(t, s)
+
+	code, m := getJSON(t, ts, "/api/graph/resolve?title="+url.QueryEscape("Alpha Notes"))
+	if code != 200 || m["id"] != "notion:alpha" {
+		t.Errorf("resolve: code=%d body=%v", code, m)
+	}
+
+	// fallback: mirror filename without extension
+	code, m = getJSON(t, ts, "/api/graph/resolve?title="+url.QueryEscape("pie"))
+	if code != 200 || m["id"] != "dropbox:recipes/pie.md" {
+		t.Errorf("resolve by filename: code=%d body=%v", code, m)
+	}
+
+	code, _ = getJSON(t, ts, "/api/graph/resolve?title=No+Such+Title")
+	if code != 404 {
+		t.Errorf("resolve unknown title: code=%d, want 404", code)
+	}
+
+	code, _ = getJSON(t, ts, "/api/graph/resolve")
+	if code != 400 {
+		t.Errorf("resolve without title: code=%d, want 400", code)
+	}
+}
+
+func TestPWAStaticServing(t *testing.T) {
+	ts, _ := newTestServer(t)
+
+	for _, p := range []string{"/", "/index.html", "/app.js", "/app.css", "/manifest.webmanifest", "/sw.js", "/icon-192.png"} {
+		resp, err := http.Get(ts.URL + p)
+		if err != nil {
+			t.Fatalf("GET %s: %v", p, err)
+		}
+		body, _ := io.ReadAll(resp.Body)
+		resp.Body.Close()
+		if resp.StatusCode != 200 {
+			t.Errorf("GET %s: code=%d", p, resp.StatusCode)
+		}
+		if len(body) == 0 {
+			t.Errorf("GET %s: empty body", p)
+		}
+	}
+
+	// index.html is served at the root
+	resp, _ := http.Get(ts.URL + "/")
+	body, _ := io.ReadAll(resp.Body)
+	resp.Body.Close()
+	if !strings.Contains(string(body), "Second brain") {
+		t.Errorf("index.html missing title: %q", body)
+	}
+
+	// API still wins over the static catch-all
+	code, _ := getJSON(t, ts, "/api/health")
+	if code != 200 {
+		t.Errorf("health code=%d, want 200", code)
+	}
+}

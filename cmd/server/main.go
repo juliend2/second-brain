@@ -38,7 +38,16 @@ func main() {
 	defer stop()
 
 	go func() {
-		log.Printf("brain API listening on %s", addr)
+		certFile, keyFile := env("TLS_CERT", ""), env("TLS_KEY", "")
+		if certFile != "" && keyFile != "" {
+			// HTTPS with a Tailscale cert (`tailscale cert <hostname>`).
+			log.Printf("brain API listening (https) on %s", addr)
+			if err := srv.ListenAndServeTLS(certFile, keyFile); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				log.Fatalf("listen: %v", err)
+			}
+			return
+		}
+		log.Printf("brain API listening (http) on %s", addr)
 		if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 			log.Fatalf("listen: %v", err)
 		}

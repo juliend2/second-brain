@@ -4,6 +4,11 @@ BRAIN_NOTES=data/notes
 # MCP server: where the brain HTTP API lives
 BRAIN_API_URL=http://127.0.0.1:8080
 
+# HTTPS serving (Tailscale cert): run `tailscale cert <hostname>` and point at
+# the emitted files to serve the PWA at https://<hostname>.
+#TLS_CERT=/etc/brain/<hostname>.crt
+#TLS_KEY=/etc/brain/<hostname>.key
+
 # Notion
 NOTION_SECRET_KEY=
 NOTION_ROOT_PAGE=

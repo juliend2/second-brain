@@ -70,10 +70,11 @@ One HTTP API (`/api/nodes`, `/api/search`, `/api/graph`) behind three clients:
   ```
   Tools: `search_corpus`, `get_node`, `related` (embedding neighbors), `find_path`
   (link-graph shortest path), `create_note` (`[[wikilinks]]` become edges).
-- **Mobile PWA** — served over HTTPS via a Tailscale tailnet certificate
-  (`machine.tailnet.ts.net`); mobile-first, installable. Main feature is
-  **read-with-related**: show a node's markdown plus links in/out and nearest
-  neighbors via embeddings.
+- **Mobile PWA** — served from `cmd/server` alongside the API, installable and
+  offline-capable (service worker caches the app shell; the API is never cached).
+  Main feature is **read-with-related**: show a node's markdown plus links in/out
+  and nearest neighbors via embeddings; `[[wikilinks]]` are tappable (resolved
+  via `/api/graph/resolve`).
 
 No CLI (dropped — interactions happen via MCP and the PWA).
 
@@ -81,6 +82,13 @@ No CLI (dropped — interactions happen via MCP and the PWA).
 
 ThinkCentre, ~4GB RAM, on the tailnet. Budget RAM carefully: Ollama +
 nomic-embed-text (~1–2GB) + Go service + SQLite must all fit.
+
+One process (`cmd/server`) serves both the API and the PWA. For the phone:
+`tailscale cert <hostname>` (Let's Encrypt, auto-renewed), then run the server
+with `TLS_CERT` / `TLS_KEY` pointing at the emitted files — it serves HTTPS at
+`https://<hostname>`. Traffic stays on the tailnet; the cert exists only so the
+mobile browser treats it as a secure context (service workers / install require
+HTTPS).
 
 ## API
 
@@ -99,6 +107,10 @@ access). Node ids contain `:` and `/` and must be URL-escaped in paths.
 | `GET /api/graph/neighbors/{id}` | edges in/out with resolved titles |
 | `GET /api/graph/related/{id}?k=` | nearest neighbors via embeddings |
 | `GET /api/graph/path/{from}/{to}` | shortest path between two nodes |
+| `GET /api/graph/resolve?title=` | map a wikilink title to a node id |
+
+In addition to `/api/*`, the server serves the PWA (`/`, `/app.js`, `/sw.js`,
+`/manifest.webmanifest`, icons).
 
 Search is SQLite FTS5 (kept in sync by the store, rebuilt with
 `RebuildIndex()`), so bleve is not needed.
@@ -121,4 +133,4 @@ Search is SQLite FTS5 (kept in sync by the store, rebuilt with
 - [x] Enrich: local embeddings (Ollama + nomic-embed-text, `enrich embed`)
 - [x] Enrich: cloud pass (tags / wikilinks / summary / connects-to, `enrich cloud`)
 - [x] Serve: MCP server (opencode on a tailnet machine → stdio, no Funnel)
-- [ ] Serve: mobile PWA (read-with-related)
+- [x] Serve: mobile PWA (read-with-related; `tailscale cert` for HTTPS)

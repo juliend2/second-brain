@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 
+	"desrosiers.org/brain/internal/pwa"
 	"desrosiers.org/brain/internal/store"
 )
 
@@ -34,6 +35,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/graph/neighbors/{id}", s.handleNeighbors)
 	mux.HandleFunc("GET /api/graph/related/{id}", s.handleRelated)
 	mux.HandleFunc("GET /api/graph/path/{from}/{to}", s.handlePath)
+	mux.HandleFunc("GET /api/graph/resolve", s.handleResolve)
+	mux.Handle("GET /", http.FileServerFS(pwa.FS()))
 	return s.logMiddleware(mux)
 }
 
