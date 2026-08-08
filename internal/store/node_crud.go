@@ -61,6 +61,13 @@ ON CONFLICT(id) DO UPDATE SET
 	if err != nil {
 		return fmt.Errorf("store: upsert node: %w", err)
 	}
+
+	// Keep the FTS index in sync with the content on disk.
+	if content, err := os.ReadFile(filepath.Join(s.notesDir, rel)); err == nil {
+		if err := s.indexNode(n.ID, n.Title, string(content)); err != nil {
+			return err
+		}
+	}
 	return nil
 }
 
@@ -119,6 +126,9 @@ func (s *Store) DeleteNode(id string) error {
 
 	if _, err := s.db.Exec(`DELETE FROM nodes WHERE id = ?`, id); err != nil {
 		return fmt.Errorf("store: delete node: %w", err)
+	}
+	if _, err := s.db.Exec(`DELETE FROM node_fts WHERE node_id = ?`, id); err != nil {
+		return fmt.Errorf("store: delete node index: %w", err)
 	}
 	os.Remove(filepath.Join(s.notesDir, rel))
 	return nil

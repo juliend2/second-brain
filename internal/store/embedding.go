@@ -50,9 +50,17 @@ func (s *Store) HasEmbedding(id string) bool {
 
 // NearestNeighbors returns the k nodes whose embeddings are most similar to
 // the given node's, excluding the node itself. Cosine similarity is computed
-// in memory over all embedded nodes; fine for personal-scale corpora.
+// in memory over all embedded nodes; fine for personal-scale corpora. It
+// returns an empty result when the node exists but has no embedding yet, and
+// ErrNotFound when the node does not exist.
 func (s *Store) NearestNeighbors(id string, k int) ([]Similar, error) {
 	if k <= 0 {
+		return nil, nil
+	}
+	if !s.HasEmbedding(id) {
+		if !s.nodeExists(id) {
+			return nil, ErrNotFound
+		}
 		return nil, nil
 	}
 	query, err := s.GetEmbedding(id)

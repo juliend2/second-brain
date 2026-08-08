@@ -132,6 +132,52 @@ func (s *Store) ExtractEdgesFromMarkdown(nodeID, md string) ([]Edge, error) {
 	return added, nil
 }
 
+// ShortestPath returns the node ids of the shortest path between from and to,
+// following edges as undirected. It returns nil when the two nodes are the
+// same or disconnected.
+func (s *Store) ShortestPath(from, to string) ([]string, error) {
+	if from == to {
+		return []string{from}, nil
+	}
+	if !s.nodeExists(from) || !s.nodeExists(to) {
+		return nil, fmt.Errorf("store: shortest path: node not found")
+	}
+
+	prev := map[string]string{from: ""}
+	queue := []string{from}
+	for len(queue) > 0 {
+		cur := queue[0]
+		queue = queue[1:]
+		if cur == to {
+			break
+		}
+		neighbors, err := s.Neighbors(cur)
+		if err != nil {
+			return nil, err
+		}
+		for _, e := range neighbors {
+			next := e.To
+			if e.To == cur {
+				next = e.From
+			}
+			if _, seen := prev[next]; seen {
+				continue
+			}
+			prev[next] = cur
+			queue = append(queue, next)
+		}
+	}
+
+	if _, ok := prev[to]; !ok {
+		return nil, nil // disconnected
+	}
+	var path []string
+	for cur := to; cur != ""; cur = prev[cur] {
+		path = append([]string{cur}, path...)
+	}
+	return path, nil
+}
+
 func (s *Store) nodeExists(id string) bool {
 	var one int
 	err := s.db.QueryRow(`SELECT 1 FROM nodes WHERE id = ?`, id).Scan(&one)

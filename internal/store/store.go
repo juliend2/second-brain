@@ -102,6 +102,12 @@ CREATE TABLE IF NOT EXISTS edges (
 
 CREATE INDEX IF NOT EXISTS idx_edges_from ON edges(from_id);
 CREATE INDEX IF NOT EXISTS idx_edges_to   ON edges(to_id);
+
+CREATE VIRTUAL TABLE IF NOT EXISTS node_fts USING fts5(
+    node_id UNINDEXED,
+    title,
+    content
+);
 `
 	_, err := db.Exec(schema)
 	if err != nil {

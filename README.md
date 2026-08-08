@@ -64,6 +64,27 @@ No CLI (dropped — interactions happen via MCP and the PWA).
 ThinkCentre, ~4GB RAM, on the tailnet. Budget RAM carefully: Ollama +
 nomic-embed-text (~1–2GB) + Go service + bleve + SQLite must all fit.
 
+## API
+
+One HTTP service (`cmd/server`, run with `LISTEN_ADDR` defaulting to `:8080`).
+Reachable over the tailnet only; no built-in auth (the Tailscale identity gates
+access). Node ids contain `:` and `/` and must be URL-escaped in paths.
+
+| Endpoint | Description |
+| --- | --- |
+| `GET /api/health` | liveness |
+| `GET /api/nodes[?source=&status=&limit=&offset=]` | list (metadata only) |
+| `GET /api/nodes/{id}` | node with markdown |
+| `PUT /api/nodes/{id}` | upsert; `[[wikilinks]]` become graph edges |
+| `DELETE /api/nodes/{id}` | remove node + edges + mirror file |
+| `GET /api/search?q=&limit=` | FTS5 full-text search (title + content, snippets) |
+| `GET /api/graph/neighbors/{id}` | edges in/out with resolved titles |
+| `GET /api/graph/related/{id}?k=` | nearest neighbors via embeddings |
+| `GET /api/graph/path/{from}/{to}` | shortest path between two nodes |
+
+Search is SQLite FTS5 (kept in sync by the store, rebuilt with
+`RebuildIndex()`), so bleve is not needed.
+
 ## TODO
 
 - [ ] Cross-cluster pass: cluster nodes by similarity, ask the LLM to propose
@@ -74,13 +95,13 @@ nomic-embed-text (~1–2GB) + Go service + bleve + SQLite must all fit.
       `ingest dropbox-sync`)
 - [x] Store: canonical markdown mirror + SQLite metadata + node API
       (`internal/store`)
+- [x] Serve: HTTP API (`cmd/server`, `internal/server`)
 - [ ] Ingest: parse binary files from Dropbox (pdf, docx) instead of skipping
       them
 - [ ] Ingest: handle Notion pages inside child databases (currently only
       child pages are traversed)
 - [ ] Enrich: local embeddings (Ollama + nomic-embed-text)
 - [ ] Enrich: cloud pass (tags / wikilinks / summary / connects-to)
-- [ ] Serve: HTTP API
 - [ ] Serve: MCP server (opencode on a tailnet machine → stdio or tailnet HTTP,
       no Funnel)
 - [ ] Serve: mobile PWA (read-with-related)
