@@ -90,6 +90,87 @@ with `TLS_CERT` / `TLS_KEY` pointing at the emitted files — it serves HTTPS at
 mobile browser treats it as a secure context (service workers / install require
 HTTPS).
 
+## Deployment (ThinkCentre)
+
+The whole brain runs from four Go binaries; there is no runtime besides
+Ollama. All binaries read `data/brain.db` / `data/notes` from env vars
+(`BRAIN_DB`, `BRAIN_NOTES`), which must point at the same shared paths.
+
+1. **Build on the ThinkCentre** (or cross-compile and copy the four binaries):
+
+   ```sh
+   go build -o brain-server ./cmd/server
+   go build -o brain-mcp    ./cmd/mcp
+   go build -o brain-ingest ./cmd/ingest
+   go build -o brain-enrich ./cmd/enrich
+   ```
+
+2. **Configure**: copy `.env.tpl` to `.env` and fill in `NOTION_SECRET_KEY`,
+   `NOTION_ROOT_PAGE`, `DROPBOX_DIR` (locally synced Dropbox folder) and
+   `LLM_API_KEY`. Set `OLLAMA_URL` if Ollama is not on localhost.
+
+3. **Install Ollama** and pull the embedding model:
+
+   ```sh
+   curl -fsSL https://ollama.com/install.sh | sh
+   ollama pull nomic-embed-text
+   ```
+
+4. **First ingest** (crawl Notion, mirror Dropbox once):
+
+   ```sh
+   ./brain-ingest notion
+   ./brain-ingest dropbox-sync
+   ```
+
+5. **Serve** — HTTPS for the phone via a Tailscale cert (auto-renewed by
+   tailscaled):
+
+   ```sh
+   tailscale cert <hostname>   # emits <hostname>.crt and <hostname>.key
+   ```
+
+   Then run the server, e.g. as a systemd unit. Example
+   `/etc/systemd/system/brain.service`:
+
+   ```ini
+   [Unit]
+   After=network-online.target tailscaled.service
+
+   [Service]
+   WorkingDirectory=/srv/brain
+   EnvironmentFile=/srv/brain/.env
+   Environment=TLS_CERT=/srv/brain/<hostname>.crt
+   Environment=TLS_KEY=/srv/brain/<hostname>.key
+   Environment=LISTEN_ADDR=:443
+   ExecStart=/srv/brain/brain-server
+   Restart=always
+
+   [Install]
+   WantedBy=multi-user.target
+   ```
+
+   Install the certs, then `sudo systemctl enable --now brain`. The PWA is now
+   at `https://<hostname>` (install it from the phone's browser).
+
+6. **Register the MCP server with opencode** on the same machine (see the
+   [Serving](#serving) section for the config snippet). `BRAIN_API_URL` must
+   point at the server; if it runs on `:443` with the cert, use
+   `https://<hostname>`.
+
+7. **Enrich**: embed everything once, then run the cloud pass; repeat the cloud
+   pass after ingests, or schedule it:
+
+   ```sh
+   ./brain-enrich embed
+   ./brain-enrich cloud
+   # optional: every night, after ingest
+   ```
+
+   `notion` and `dropbox-watch` are idempotent, so a nightly `cron`/`systemd
+   timer` running `brain-ingest` followed by `brain-enrich cloud` keeps the
+   corpus fresh.
+
 ## API
 
 One HTTP service (`cmd/server`, run with `LISTEN_ADDR` defaulting to `:8080`).
