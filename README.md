@@ -16,9 +16,13 @@ ingest → store → enrich → serve
 
 ## Sources
 
-- **Notion** — via the existing personal-search-engine crawler (API → markdown).
+- **Notion** — via the `ingest notion` command. Depth-first search over child
+  pages (same strategy as the legacy personal-search-engine crawler), title
+  heading prefixed to the markdown. Tracks Notion's `last_edited_time` in node
+  metadata so unchanged pages are skipped on re-sync.
 - **Dropbox** — via the official Dropbox client, which syncs to a local folder
-  (`~/Dropbox`); we watch it with `fsnotify` instead of polling the API.
+  (`~/Dropbox`); `ingest dropbox-watch` mirrors it with fsnotify, `ingest
+  dropbox-sync` does a one-shot sync (with pruning of removed files).
 
 Mobile input does **not** go through a capture inbox: all input from mobile goes
 through the Notion mobile app.
@@ -65,12 +69,18 @@ nomic-embed-text (~1–2GB) + Go service + bleve + SQLite must all fit.
 - [ ] Cross-cluster pass: cluster nodes by similarity, ask the LLM to propose
       synthesis/idea notes that bridge clusters ("forming new ideas and
       intuitions"). Nice-to-have, deferred.
-- [ ] Ingest: Notion crawler
-- [ ] Ingest: Dropbox fsnotify watcher
+- [x] Ingest: Notion crawler (`ingest notion`)
+- [x] Ingest: Dropbox watcher + one-shot sync (`ingest dropbox-watch` /
+      `ingest dropbox-sync`)
 - [x] Store: canonical markdown mirror + SQLite metadata + node API
       (`internal/store`)
+- [ ] Ingest: parse binary files from Dropbox (pdf, docx) instead of skipping
+      them
+- [ ] Ingest: handle Notion pages inside child databases (currently only
+      child pages are traversed)
 - [ ] Enrich: local embeddings (Ollama + nomic-embed-text)
 - [ ] Enrich: cloud pass (tags / wikilinks / summary / connects-to)
 - [ ] Serve: HTTP API
-- [ ] Serve: MCP server
+- [ ] Serve: MCP server (opencode on a tailnet machine → stdio or tailnet HTTP,
+      no Funnel)
 - [ ] Serve: mobile PWA (read-with-related)

@@ -31,6 +31,7 @@ type Notion struct {
 	apiKey   string
 	rootPage string
 	client   *http.Client
+	baseURL  string
 	interval time.Duration // politeness delay between API requests
 }
 
@@ -41,9 +42,16 @@ func NewNotion(s *store.Store, apiKey, rootPage string) *Notion {
 		apiKey:   apiKey,
 		rootPage: rootPage,
 		client:   &http.Client{Timeout: 30 * time.Second},
+		baseURL:  "https://api.notion.com",
 		interval: 350 * time.Millisecond,
 	}
 }
+
+// SetInterval adjusts the politeness delay between API requests. Tests pass 0.
+func (n *Notion) SetInterval(d time.Duration) { n.interval = d }
+
+// UseBaseURL overrides the API base URL; used by tests.
+func (n *Notion) UseBaseURL(u string) { n.baseURL = u }
 
 // Sync crawls the page tree and upserts every page into the store.
 func (n *Notion) Sync(ctx context.Context) (Stats, error) {
@@ -59,8 +67,12 @@ func (n *Notion) walk(ctx context.Context, pageID string, stats *Stats) error {
 	if err := ctx.Err(); err != nil {
 		return err
 	}
-	if err := n.process(ctx, pageID, stats); err != nil {
+	descend, err := n.process(ctx, pageID, stats)
+	if err != nil {
 		return err
+	}
+	if !descend {
+		return nil
 	}
 
 	children, err := n.getChildPageIDs(ctx, pageID)
@@ -76,16 +88,18 @@ func (n *Notion) walk(ctx context.Context, pageID string, stats *Stats) error {
 }
 
 // process upserts a single page, skipping it when last_edited_time is
-// unchanged since the previous sync.
-func (n *Notion) process(ctx context.Context, pageID string, stats *Stats) error {
+// unchanged since the previous sync. It returns whether the page's children
+// should be visited (false for archived pages).
+func (n *Notion) process(ctx context.Context, pageID string, stats *Stats) (bool, error) {
 	stats.Pages++
 	page, err := n.getPage(ctx, pageID)
 	if err != nil {
 		stats.Failed++
-		return err
+		return false, err
 	}
 	if page.Archived {
-		return nil
+		stats.Skipped++
+		return false, nil
 	}
 
 	title := firstTitle(page.Properties.Title.Title)
@@ -95,17 +109,17 @@ func (n *Notion) process(ctx context.Context, pageID string, stats *Stats) error
 	if err == nil {
 		if existing.Meta[metaLastEditedTime] == page.LastEditedTime {
 			stats.Skipped++
-			return nil
+			return true, nil
 		}
 	} else if !errors.Is(err, store.ErrNotFound) {
 		stats.Failed++
-		return err
+		return false, err
 	}
 
 	md, err := n.getMarkdown(ctx, pageID)
 	if err != nil {
 		stats.Failed++
-		return err
+		return true, err
 	}
 	if title == "" {
 		title = pageID
@@ -123,7 +137,7 @@ func (n *Notion) process(ctx context.Context, pageID string, stats *Stats) error
 	}
 	if err := n.store.PutNode(node); err != nil {
 		stats.Failed++
-		return err
+		return true, err
 	}
 
 	if existing == nil {
@@ -131,7 +145,12 @@ func (n *Notion) process(ctx context.Context, pageID string, stats *Stats) error
 	} else {
 		stats.Updated++
 	}
-	return nil
+	return true, nil
+}
+
+// titleItem is a single rich-text item of a page title property.
+type titleItem struct {
+	PlainText string `json:"plain_text"`
 }
 
 // notionPage is the subset of the Notion page object we care about.
@@ -142,16 +161,14 @@ type notionPage struct {
 	LastEditedTime string `json:"last_edited_time"`
 	Properties     struct {
 		Title struct {
-			Title []struct {
-				PlainText string `json:"plain_text"`
-			} `json:"title"`
+			Title []titleItem `json:"title"`
 		} `json:"title"`
 	} `json:"properties"`
 }
 
 func (n *Notion) getPage(ctx context.Context, pageID string) (*notionPage, error) {
 	var p notionPage
-	if err := n.getJSON(ctx, "https://api.notion.com/v1/pages/"+pageID, &p); err != nil {
+	if err := n.getJSON(ctx, n.baseURL+"/v1/pages/"+pageID, &p); err != nil {
 		return nil, err
 	}
 	return &p, nil
@@ -161,7 +178,7 @@ func (n *Notion) getPage(ctx context.Context, pageID string) (*notionPage, error
 // following pagination.
 func (n *Notion) getChildPageIDs(ctx context.Context, parentID string) ([]string, error) {
 	var ids []string
-	base := "https://api.notion.com/v1/blocks/" + parentID + "/children"
+	base := n.baseURL + "/v1/blocks/" + parentID + "/children"
 	url := base
 	for {
 		var resp struct {
@@ -191,7 +208,7 @@ func (n *Notion) getMarkdown(ctx context.Context, pageID string) (string, error)
 	var resp struct {
 		Markdown string `json:"markdown"`
 	}
-	if err := n.getJSON(ctx, "https://api.notion.com/v1/pages/"+pageID+"/markdown", &resp); err != nil {
+	if err := n.getJSON(ctx, n.baseURL+"/v1/pages/"+pageID+"/markdown", &resp); err != nil {
 		return "", err
 	}
 	return resp.Markdown, nil
@@ -231,7 +248,7 @@ func (n *Notion) getJSON(ctx context.Context, url string, out any) error {
 	return nil
 }
 
-func firstTitle(items []struct{ PlainText string }) string {
+func firstTitle(items []titleItem) string {
 	if len(items) == 0 {
 		return ""
 	}
