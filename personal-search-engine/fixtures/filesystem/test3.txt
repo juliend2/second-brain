@@ -1,0 +1,1 @@
+Texte en français qui contient des caractères spéciaux.

@@ -1,0 +1,10 @@
+# Configurations
+.env
+
+# Index
+*.bleve/
+/cache/
+
+# builds
+/build/
+/main

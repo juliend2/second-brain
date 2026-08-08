@@ -1,0 +1,12 @@
+<html>
+  <head>
+    <title>{{ .Title }}</title>
+  </head>
+  <body>
+    <h1>{{ .Title }}</h1>
+    <form method="GET" action="/search">
+      <input type="text" name="q" />
+      <input type="submit" name="Search" />
+    </form>
+  </body>
+</html>
